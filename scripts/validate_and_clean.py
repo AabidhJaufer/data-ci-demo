@@ -37,7 +37,7 @@ def clean_data(file_path):
                 continue
 
             # Check 2: Compare against other words ALREADY present in this column first
-            column_matches = difflib.get_close_matches(val_title, unique_existing, n=1, cutoff=0.6)
+            column_matches = difflib.get_close_matches(val_title, unique_existing, n=1, cutoff=0.5)
 
             if column_matches:
                 best_match = column_matches[0]
