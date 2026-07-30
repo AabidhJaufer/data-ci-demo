@@ -11,19 +11,29 @@ def clean_data(file_path):
     
     flagged_issues = []
     
-    # 1. Strip leading and trailing whitespace across all cells
+    # 1. Strip whitespace across all cells
     for col in df.columns:
         df[col] = df[col].fillna('').astype(str).str.strip()
 
-    # 2. Context-Aware Correction for Text Columns (e.g., Category)
-    text_columns = [col for col in df.columns if col.lower() in ['category', 'type', 'status', 'department']]
+    # 2. Capitalize the first letter of every word across all text columns
+    # (Excludes purely numeric columns like ID or Price)
+    text_cols = [col for col in df.columns if col.lower() not in ['id', 'price']]
     
-    for col in text_columns:
-        # Step A: Build a dictionary of existing trusted values in this column
-        # Filter out empty strings and items that look like obvious errors (too short or low occurrence)
+    for col in text_cols:
+        for idx, val in enumerate(df[col]):
+            if val:
+                # title() capitalizes the first letter of every word
+                capitalized_val = val.title()
+                if capitalized_val != val:
+                    df.at[idx, col] = capitalized_val
+
+    # 3. Context-Aware Correction for Category/Type columns
+    category_cols = [col for col in df.columns if col.lower() in ['category', 'type', 'status', 'department']]
+    
+    for col in category_cols:
+        # Build trusted pool of existing values in this column
         all_values = df[col].tolist()
-        clean_existing = [v.title() for v in all_values if len(v) > 2]
-        unique_existing = list(set(clean_existing))
+        unique_existing = list(set([v.title() for v in all_values if len(v) > 2]))
 
         for idx, val in enumerate(df[col]):
             if not val:
@@ -31,12 +41,12 @@ def clean_data(file_path):
 
             val_title = val.title()
 
-            # Check 1: Is it already an exact match (ignoring case)?
+            # Check A: Exact match in context pool
             if val_title in unique_existing:
                 df.at[idx, col] = val_title
                 continue
 
-            # Check 2: Compare against other words ALREADY present in this column first
+            # Check B: Fuzzy match against column context (cutoff=0.5 catches missing letters like 'cloting')
             column_matches = difflib.get_close_matches(val_title, unique_existing, n=1, cutoff=0.5)
 
             if column_matches:
@@ -46,7 +56,7 @@ def clean_data(file_path):
                     f"Row {idx + 2}: Auto-corrected '{val}' to match existing column context '{best_match}'"
                 )
             else:
-                # Check 3: If no column context match exists, get dictionary suggestion BUT do not auto-apply it
+                # Check C: Flag unverified dictionary suggestion without auto-applying
                 dict_suggestion = spell.correction(val)
                 if dict_suggestion and dict_suggestion.lower() != val.lower():
                     flagged_issues.append(
@@ -57,7 +67,7 @@ def clean_data(file_path):
                         f"Row {idx + 2}: Unrecognized entry '{val}' in column '{col}'. Manual review required."
                     )
 
-    # 3. Format Price column to standard 2 decimal places
+    # 4. Format Price column to standard 2 decimal places
     if 'Price' in df.columns:
         for idx, val in enumerate(df['Price']):
             if val:
@@ -67,7 +77,7 @@ def clean_data(file_path):
                 except ValueError:
                     flagged_issues.append(f"Row {idx + 2}: Invalid price value '{val}'")
 
-    # 4. Check for missing required values
+    # 5. Check for missing required values
     for col in df.columns:
         missing_rows = df[df[col] == ''].index.tolist()
         if missing_rows:
