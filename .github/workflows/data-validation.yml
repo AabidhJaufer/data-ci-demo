@@ -1,0 +1,51 @@
+name: Data Validation Pipeline
+
+on:
+  pull_request:
+    paths:
+      - 'data/*.csv'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  validate-and-clean:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas pyspellchecker
+
+      - name: Run Validation Script
+        run: |
+          python scripts/validate_and_clean.py data/dirty_data.csv
+
+      - name: Comment Report on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('validation_summary.md', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            })
+
+      - name: Commit Cleaned File back to PR
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "style(data): apply automatic formatting and corrections"
+          file_pattern: "data/*_cleaned.csv"
